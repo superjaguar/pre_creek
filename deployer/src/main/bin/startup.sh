@@ -78,6 +78,7 @@ else
 fi
 
 JAVA_OPTS=" $JAVA_OPTS -Djava.awt.headless=true -Djava.net.preferIPv4Stack=true -Dfile.encoding=UTF-8"
+JAVA_OPTS=" $JAVA_OPTS -Xdebug -Xrunjdwp:transport=dt_socket,server=y,address=5005,suspend=n"
 CANAL_OPTS="-DappName=otter-canal -Dlogback.configurationFile=$logback_configurationFile -Dcanal.conf=$canal_conf"
 
 if [ -e $canal_conf -a -e $logback_configurationFile ]
@@ -87,7 +88,7 @@ then
 		do CLASSPATH=$i:"$CLASSPATH";
 	done
  	CLASSPATH="$base/conf:$CLASSPATH";
- 	
+
  	echo "cd to $bin_abs_path for workaround relative path"
   	cd $bin_abs_path
  	
@@ -99,6 +100,6 @@ then
 	
 	echo "cd to $current_path for continue"
   	cd $current_path
-else 
+else
 	echo "canal conf("$canal_conf") OR log configration file($logback_configurationFile) is not exist,please create then first!"
 fi

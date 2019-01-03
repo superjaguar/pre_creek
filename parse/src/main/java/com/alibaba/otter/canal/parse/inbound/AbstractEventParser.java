@@ -168,8 +168,8 @@ public abstract class AbstractEventParser<EVENT> extends AbstractCanalLifeCycle 
                         // 1. 构造Erosa连接
                         erosaConnection = buildErosaConnection();
 
-                        // 2. 启动一个心跳线程
-                        startHeartBeat(erosaConnection);
+                        // 2. 启动一个心跳线程 mark : 先不启动心跳任务(保持长连接)
+//                        startHeartBeat(erosaConnection);
 
                         // 3. 执行dump前的准备工作
                         preDump(erosaConnection);
@@ -253,7 +253,7 @@ public abstract class AbstractEventParser<EVENT> extends AbstractCanalLifeCycle 
                                 if (StringUtils.isEmpty(startPosition.getJournalName())
                                     && startPosition.getTimestamp() != null) {
                                     erosaConnection.dump(startPosition.getTimestamp(), multiStageCoprocessor);
-                                } else {
+                                } else {  // mark : 消息处理器启动成功，通过连接开始dump数据。
                                     erosaConnection.dump(startPosition.getJournalName(),
                                         startPosition.getPosition(),
                                         multiStageCoprocessor);

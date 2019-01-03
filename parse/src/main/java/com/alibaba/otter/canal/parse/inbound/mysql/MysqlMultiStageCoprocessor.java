@@ -39,13 +39,13 @@ import com.taobao.tddl.dbsync.binlog.event.UpdateRowsLogEvent;
 import com.taobao.tddl.dbsync.binlog.event.WriteRowsLogEvent;
 
 /**
- * 针对解析器提供一个多阶段协同的处理
+ * 针对解析器提供一个多阶段协同的处理 -- > Disruptor
  * 
  * <pre>
- * 1. 网络接收 (单线程)
- * 2. 事件基本解析 (单线程，事件类型、DDL解析构造TableMeta、维护位点信息)
- * 3. 事件深度解析 (多线程, DML事件数据的完整解析)
- * 4. 投递到store (单线程)
+ * 1. 网络接收 (单线程) -- > 从主库接收到binlogEvent，投递到RingBuffer中
+ * 2. 事件基本解析 (单线程，事件类型、DDL解析构造TableMeta、维护位点信息)  -- > 基本解析，decode成可识别数据
+ * 3. 事件深度解析 (多线程, DML事件数据的完整解析) -- > 深度解析，解析成业务方可识别的数据结构-before，after
+ * 4. 投递到store (单线程) -- > 投递到持久化层
  * </pre>
  * 
  * @author agapple 2018年7月3日 下午4:54:17
@@ -104,7 +104,7 @@ public class MysqlMultiStageCoprocessor extends AbstractCanalLifeCycle implement
         simpleParserStage.setExceptionHandler(exceptionHandler);
         disruptorMsgBuffer.addGatingSequences(simpleParserStage.getSequence());
 
-        // stage 3
+        // stage 3 深度解析事件，设置并行度。
         SequenceBarrier dmlParserSequenceBarrier = disruptorMsgBuffer.newBarrier(simpleParserStage.getSequence());
         WorkHandler<MessageEvent>[] workHandlers = new DmlParserStage[parserThreadCount];
         for (int i = 0; i < parserThreadCount; i++) {
@@ -117,7 +117,7 @@ public class MysqlMultiStageCoprocessor extends AbstractCanalLifeCycle implement
         Sequence[] sequence = workerPool.getWorkerSequences();
         disruptorMsgBuffer.addGatingSequences(sequence);
 
-        // stage 4
+        // stage 4   mark : set handler to ringbuffer
         SequenceBarrier sinkSequenceBarrier = disruptorMsgBuffer.newBarrier(sequence);
         sinkStoreStage = new BatchEventProcessor<MessageEvent>(disruptorMsgBuffer,
             sinkSequenceBarrier,
@@ -201,7 +201,7 @@ public class MysqlMultiStageCoprocessor extends AbstractCanalLifeCycle implement
         long blockingStart = 0L;
         int fullTimes = 0;
         do {
-            try {
+            try { // mark : dump a event from binlog , write to ringbuffer
                 long next = disruptorMsgBuffer.tryNext();
                 MessageEvent data = disruptorMsgBuffer.get(next);
                 if (buffer != null) {
@@ -209,7 +209,7 @@ public class MysqlMultiStageCoprocessor extends AbstractCanalLifeCycle implement
                 } else {
                     data.setEvent(event);
                 }
-                disruptorMsgBuffer.publish(next);
+                disruptorMsgBuffer.publish(next); // 写入RingBuffer，ready to read by consumer
                 if (fullTimes > 0) {
                     eventsPublishBlockingTime.addAndGet(System.nanoTime() - blockingStart);
                 }
@@ -242,7 +242,7 @@ public class MysqlMultiStageCoprocessor extends AbstractCanalLifeCycle implement
         }
 
     }
-
+    // mark : 简单解析处理类，从RingBuffer拉取到消息后触发。
     private class SimpleParserStage implements EventHandler<MessageEvent>, LifecycleAware {
 
         private LogDecoder decoder;
